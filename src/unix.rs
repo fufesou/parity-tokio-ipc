@@ -1,6 +1,7 @@
 use libc::chmod;
 use std::ffi::CString;
 use std::io::{self, Error};
+use std::os::fd::{AsRawFd, RawFd};
 use tokio::io::*;
 use tokio::net::{UnixListener, UnixStream};
 use std::path::Path;
@@ -122,6 +123,12 @@ pub struct Connection {
 impl Connection {
     fn wrap(stream: UnixStream) -> Self {
         Self { inner: stream }
+    }
+}
+
+impl AsRawFd for Connection {
+    fn as_raw_fd(&self) -> RawFd {
+        self.inner.as_raw_fd()
     }
 }
 
