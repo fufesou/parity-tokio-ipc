@@ -1,3 +1,6 @@
+use winapi::shared::sddl::{
+    ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
+};
 use winapi::shared::winerror::ERROR_SUCCESS;
 use winapi::um::accctrl::*;
 use winapi::um::aclapi::*;
@@ -6,9 +9,11 @@ use winapi::um::securitybaseapi::*;
 use winapi::um::winbase::{LocalAlloc, LocalFree};
 use winapi::um::winnt::*;
 
+use std::ffi::OsStr;
 use std::io;
 use std::marker;
 use std::mem;
+use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
 use std::ptr;
 use tokio::net::windows::named_pipe::*;
@@ -154,6 +159,12 @@ impl SecurityAttributes {
         let attributes = Some(InnerAttributes::allow_everyone(
             GENERIC_READ | GENERIC_WRITE,
         )?);
+        Ok(SecurityAttributes { attributes })
+    }
+
+    /// New security attributes from an explicit SDDL string.
+    pub fn from_sddl(sddl: &str) -> io::Result<SecurityAttributes> {
+        let attributes = Some(InnerAttributes::from_sddl(sddl)?);
         Ok(SecurityAttributes { attributes })
     }
 
@@ -321,6 +332,23 @@ impl SecurityDescriptor {
         Ok(())
     }
 
+    fn from_sddl(sddl: &str) -> io::Result<Self> {
+        let mut descriptor_ptr: PSECURITY_DESCRIPTOR = ptr::null_mut();
+        let mut sddl_wide: Vec<u16> = OsStr::new(sddl).encode_wide().chain(Some(0)).collect();
+        let result = unsafe {
+            ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                sddl_wide.as_mut_ptr(),
+                SDDL_REVISION_1 as u32,
+                &mut descriptor_ptr,
+                ptr::null_mut(),
+            )
+        };
+        if result == 0 || descriptor_ptr.is_null() {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(SecurityDescriptor { descriptor_ptr })
+    }
+
     unsafe fn as_ptr(&self) -> PSECURITY_DESCRIPTOR {
         self.descriptor_ptr
     }
@@ -375,6 +403,20 @@ impl InnerAttributes {
         Ok(attributes)
     }
 
+    fn from_sddl(sddl: &str) -> io::Result<InnerAttributes> {
+        let descriptor = SecurityDescriptor::from_sddl(sddl)?;
+        let mut attrs = unsafe { mem::zeroed::<SECURITY_ATTRIBUTES>() };
+        attrs.nLength = mem::size_of::<SECURITY_ATTRIBUTES>() as u32;
+        attrs.lpSecurityDescriptor = unsafe { descriptor.as_ptr() };
+        attrs.bInheritHandle = false as i32;
+        let acl = Acl::empty().expect("this should never fail");
+        Ok(InnerAttributes {
+            descriptor,
+            acl,
+            attrs,
+        })
+    }
+
     unsafe fn as_ptr(&mut self) -> PSECURITY_ATTRIBUTES {
         &mut self.attrs as *mut _
     }
@@ -395,5 +437,11 @@ mod test {
         SecurityAttributes::empty()
             .allow_everyone_connect()
             .expect("failed to create security attributes that allow everyone to read and write to/from a pipe");
+    }
+
+    #[test]
+    fn test_security_attributes_from_sddl() {
+        SecurityAttributes::from_sddl("D:P(A;;GA;;;SY)(A;;GA;;;BA)")
+            .expect("failed to create security attributes from sddl");
     }
 }
