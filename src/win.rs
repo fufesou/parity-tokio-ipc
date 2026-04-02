@@ -444,4 +444,10 @@ mod test {
         SecurityAttributes::from_sddl("D:P(A;;GA;;;SY)(A;;GA;;;BA)")
             .expect("failed to create security attributes from sddl");
     }
+
+    #[test]
+    fn test_security_attributes_from_sddl_malformed() {
+        let result = SecurityAttributes::from_sddl("D:P(A;;GA;;;SY)(A;;GA;;;BA");
+        assert!(result.is_err(), "expected malformed SDDL to return error");
+    }
 }
