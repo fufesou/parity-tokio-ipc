@@ -377,7 +377,7 @@ impl InnerAttributes {
         attrs.lpSecurityDescriptor = unsafe { descriptor.as_ptr() };
         attrs.bInheritHandle = false as i32;
 
-        let acl = Acl::empty().expect("this should never fail");
+        let acl = Acl::empty()?;
 
         Ok(InnerAttributes {
             acl,
@@ -409,7 +409,7 @@ impl InnerAttributes {
         attrs.nLength = mem::size_of::<SECURITY_ATTRIBUTES>() as u32;
         attrs.lpSecurityDescriptor = unsafe { descriptor.as_ptr() };
         attrs.bInheritHandle = false as i32;
-        let acl = Acl::empty().expect("this should never fail");
+        let acl = Acl::empty()?;
         Ok(InnerAttributes {
             descriptor,
             acl,
